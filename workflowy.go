@@ -57,7 +57,7 @@ func NewClientFromSession(session string) (*WorkflowyClient, error) {
 	}
 }
 
-func (client *WorkflowyClient) LookupItem(path []string) (WorkflowyItem, error) {
+func (client *WorkflowyClient) LookupItem(path... string) (WorkflowyItem, error) {
 	if client.json.ExistsP("projectTreeData.mainProjectTreeInfo.rootProjectChildren") {
 		return lookupProjectNode(client.json.Path("projectTreeData.mainProjectTreeInfo.rootProjectChildren"), path)
 	} else {
@@ -132,10 +132,6 @@ func (client *WorkflowyClient) AddUncomplete(item_id string) {
 func (client *WorkflowyClient) ApplyUpdates() error {
 	form := url.Values{}
 
-	//item_id := makeItemId()
-	//create := newCreateOperation(item_id, 10, parent)
-	//edit := newEditOperation(item_id, &name, nil, nil, nil)
-
 	arry := newOperationList(client.most_recent_transaction, client.pending_operations)
 	client.pending_operations = [](*gabs.Container){}
 
@@ -149,17 +145,11 @@ func (client *WorkflowyClient) ApplyUpdates() error {
 	req, _ := http.NewRequest("POST", "https://workflowy.com/push_and_poll", strings.NewReader(form.Encode()))
 	req.Header.Add("Cookie", "sessionid="+client.Session)
 
-	resp, err := http.DefaultClient.Do(req)
+	_, err := http.DefaultClient.Do(req)
 
 	if (err != nil) {
 		return err
 	}
-
-	readall, _ := ioutil.ReadAll(resp.Body)
-
-	log.Println(string(readall))
-
-	log.Println(resp.StatusCode)
 
 	return nil
 }
