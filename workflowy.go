@@ -10,6 +10,7 @@ import (
 	"crypto/rand"
 	"io/ioutil"
 	"github.com/Jeffail/gabs"
+	"html"
 )
 
 type WorkflowyClient struct {
@@ -157,10 +158,6 @@ func (client *WorkflowyClient) ApplyAndRefresh() error {
 	return nil
 }
 
-func clean(input string) string {
-	return strings.Replace(input, "&", "and", -1)
-}
-
 func newOperationList(lasttxn string, operations [](*gabs.Container)) *gabs.Container {
 	jsons := gabs.New()
 	jsons.Set(lasttxn, "most_recent_operation_transaction_id")
@@ -196,10 +193,10 @@ func newCreateOperation(item string, priority int, parent *string) *gabs.Contain
 func newEditOperation(item string, name *string, description *string, parent *string, priority *int) *gabs.Container {
 	op := newOperation(item, "edit")
 	if name != nil {
-		op.Set(clean(*name), "data", "name")
+		op.Set(html.EscapeString(*name), "data", "name")
 	}
 	if description != nil {
-		op.Set(clean(*description), "data", "description")
+		op.Set(html.EscapeString(*description), "data", "description")
 	}
 	if parent != nil {
 		op.Set(*parent, "data", "parentid")

@@ -10,7 +10,6 @@ An Unofficial Golang Client for [Workflowy](https://workflowy.com)
 * Updates (Create / Update / Complete / Uncomplete / Delete)
 
 ## Not Implemented
-* Handling updates with some special characters (&, >, <)
 * Handling items that are shared
 * Locally applying updates without re-fetching whole item tree
 * Correctly honouring modification dates
