@@ -10,7 +10,6 @@ import (
 	"crypto/rand"
 	"io/ioutil"
 	"github.com/Jeffail/gabs"
-	"log"
 )
 
 type WorkflowyClient struct {
@@ -40,24 +39,30 @@ func NewClientFromCredentials(username string, password string) (*WorkflowyClien
 }
 
 func NewClientFromSession(session string) (*WorkflowyClient, error) {
+	workflowyClient := &WorkflowyClient{Session: session, pending_operations: [](*gabs.Container){}}
+	err := workflowyClient.refreshData()
+	return workflowyClient, err
+}
+
+func (client *WorkflowyClient) refreshData() error {
 	req, err := http.NewRequest("GET", "https://workflowy.com/get_initialization_data?client_version=18", nil)
-	req.Header.Add("Cookie", "sessionid="+session)
+	req.Header.Add("Cookie", "sessionid="+client.Session)
 	resp, err := http.DefaultClient.Do(req)
 
 	if (err != nil) {
-		return nil, err
+		return err
 	} else {
 		readall, _ := ioutil.ReadAll(resp.Body)
 		json, _ := gabs.ParseJSON(readall)
-		client := json.Path("projectTreeData.clientId").Data().(string)
-		owner := int(json.Path("projectTreeData.mainProjectTreeInfo.ownerId").Data().(float64))
-		most_recent_transaction := json.Path("projectTreeData.mainProjectTreeInfo.initialMostRecentOperationTransactionId").Data().(string)
-		workflowyClient := &WorkflowyClient{Session: session, client: client, owner: owner, most_recent_transaction: most_recent_transaction, json: json, pending_operations: [](*gabs.Container){}}
-		return workflowyClient, nil
+		client.client = json.Path("projectTreeData.clientId").Data().(string)
+		client.owner = int(json.Path("projectTreeData.mainProjectTreeInfo.ownerId").Data().(float64))
+		client.most_recent_transaction = json.Path("projectTreeData.mainProjectTreeInfo.initialMostRecentOperationTransactionId").Data().(string)
+		client.json = json
+		return nil
 	}
 }
 
-func (client *WorkflowyClient) LookupItem(path... string) (WorkflowyItem, error) {
+func (client *WorkflowyClient) LookupItem(path ... string) (WorkflowyItem, error) {
 	if client.json.ExistsP("projectTreeData.mainProjectTreeInfo.rootProjectChildren") {
 		return lookupProjectNode(client.json.Path("projectTreeData.mainProjectTreeInfo.rootProjectChildren"), path)
 	} else {
@@ -66,7 +71,6 @@ func (client *WorkflowyClient) LookupItem(path... string) (WorkflowyItem, error)
 }
 
 func lookupProjectNode(json *gabs.Container, path []string) (WorkflowyItem, error) {
-	//log.Println(client.json.StringIndent("", "\t"))
 	children, err := json.Children()
 	if err != nil {
 		return WorkflowyItem{}, errors.New("could not find children")
@@ -75,8 +79,6 @@ func lookupProjectNode(json *gabs.Container, path []string) (WorkflowyItem, erro
 	for priority, child := range children {
 		childName := child.Path("nm").Data().(string)
 		if childName == path[0] {
-			log.Println("WOW FOUND " + child.Path("nm").Data().(string))
-
 			if len(path) == 1 {
 				item_id := child.Path("id").Data().(string)
 				name := child.Path("nm").Data().(string)
@@ -129,18 +131,16 @@ func (client *WorkflowyClient) AddUncomplete(item_id string) {
 	client.pending_operations = append(client.pending_operations, newUncompleteOperation(item_id))
 }
 
-func (client *WorkflowyClient) ApplyUpdates() error {
+func (client *WorkflowyClient) ApplyAndRefresh() error {
 	form := url.Values{}
 
 	arry := newOperationList(client.most_recent_transaction, client.pending_operations)
-	client.pending_operations = [](*gabs.Container){}
 
 	form.Add("client_id", client.client)
 	form.Add("crosscheck_user_id", string(client.owner))
 	form.Add("push_poll_id", makeUpdateId())
 	form.Add("client_version", "18")
 	form.Add("push_poll_data", arry.String())
-	log.Println(arry.StringIndent("", "\t"))
 
 	req, _ := http.NewRequest("POST", "https://workflowy.com/push_and_poll", strings.NewReader(form.Encode()))
 	req.Header.Add("Cookie", "sessionid="+client.Session)
@@ -150,6 +150,9 @@ func (client *WorkflowyClient) ApplyUpdates() error {
 	if (err != nil) {
 		return err
 	}
+
+	client.pending_operations = [](*gabs.Container){}
+	client.refreshData()
 
 	return nil
 }
@@ -236,7 +239,6 @@ func login(username string, password string) (string, error) {
 	} else {
 		for _, cookie := range resp.Cookies() {
 			if cookie.Name == "sessionid" {
-				fmt.Println("EXPIRES " + cookie.Expires.String())
 				return cookie.Value, nil
 			}
 		}
