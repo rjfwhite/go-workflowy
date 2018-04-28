@@ -1,8 +1,8 @@
 # go-workflowy
-An Unofficial Go Workflowy Client Library
+An Unofficial Golang Client for [Workflowy](https://workflowy.com)
 
 ## Dependencies
-[https://github.com/Jeffail/gabs](Jeffail/gabs JSON)
+[github.com/Jeffail/gabs](https://github.com/Jeffail/gabs)
 
 ## Implemented
 * Login (with Session or Username / Password)
@@ -10,6 +10,7 @@ An Unofficial Go Workflowy Client Library
 * Updates (Create / Update / Complete / Uncomplete / Delete)
 
 ## Not Implemented
+* Handling updates with some special characters (&, >, <)
 * Handling items that are shared
 * Locally applying updates without re-fetching whole item tree
 * Correctly honouring modification dates
