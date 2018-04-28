@@ -27,7 +27,7 @@ client, _ := workflowy.NewClient(session_id)
 
 // Looking up a particular part of the workflowy item tree
 item, _ := client.LookupItem("My", "Workflowy", "Path")
-log.Print(item.Name, item.Priority, item.Completed, item.Children_names)
+log.Printf("%v %v %v %v\n", item.Name, item.Priority, item.Completed, item.Children_names)
 
 // Updates are queued up, then applied
 client.AddCreate("😄 My New Item", 0, nil, nil)

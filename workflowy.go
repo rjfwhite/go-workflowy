@@ -14,7 +14,7 @@ import (
 )
 
 type WorkflowyClient struct {
-	Session                 string
+	session                 string
 	client                  string
 	most_recent_transaction string
 	owner                   int
@@ -57,17 +57,13 @@ func GetSession(username string, password string) (string, error) {
 }
 
 func NewClient(session string) (*WorkflowyClient, error) {
-	workflowyClient := &WorkflowyClient{Session: session, pending_operations: [](*gabs.Container){}}
-	err := workflowyClient.refreshData()
+	workflowyClient := &WorkflowyClient{session: session, pending_operations: [](*gabs.Container){}}
+	err := workflowyClient.fetchItemsFromServer()
 	return workflowyClient, err
 }
 
 func (client *WorkflowyClient) LookupItem(path ... string) (WorkflowyItem, error) {
-	if client.json.ExistsP("projectTreeData.mainProjectTreeInfo.rootProjectChildren") {
-		return lookupProjectNode(client.json.Path("projectTreeData.mainProjectTreeInfo.rootProjectChildren"), path)
-	} else {
-		return WorkflowyItem{}, errors.New("Malformed workflowy json")
-	}
+	return lookupItemFromJson(client.json.Path("projectTreeData.mainProjectTreeInfo.rootProjectChildren"), path)
 }
 
 func (client *WorkflowyClient) AddCreate(name string, priority int, parent *string, description *string) {
@@ -127,32 +123,38 @@ func (client *WorkflowyClient) AddUncomplete(item_id string) {
 
 func (client *WorkflowyClient) ApplyAndRefresh() error {
 	form := url.Values{}
-	operationList := newOperationList(client.most_recent_transaction, client.pending_operations)
+	operationList := makeOperationList(client.most_recent_transaction, client.pending_operations)
 	form.Add("client_id", client.client)
 	form.Add("crosscheck_user_id", string(client.owner))
 	form.Add("push_poll_id", makeUpdateId())
 	form.Add("client_version", "18")
 	form.Add("push_poll_data", operationList.String())
 	req, _ := http.NewRequest("POST", "https://workflowy.com/push_and_poll", strings.NewReader(form.Encode()))
-	req.Header.Add("Cookie", "sessionid="+client.Session)
+	req.Header.Add("Cookie", "sessionid="+client.session)
 	_, err := http.DefaultClient.Do(req)
 	if (err != nil) {
 		return err
 	}
 	client.pending_operations = [](*gabs.Container){}
-	client.refreshData()
+	client.fetchItemsFromServer()
 	return nil
 }
 
-func (client *WorkflowyClient) refreshData() error {
+func (client *WorkflowyClient) fetchItemsFromServer() error {
 	req, err := http.NewRequest("GET", "https://workflowy.com/get_initialization_data?client_version=18", nil)
-	req.Header.Add("Cookie", "sessionid="+client.Session)
+	req.Header.Add("Cookie", "sessionid="+client.session)
 	resp, err := http.DefaultClient.Do(req)
 	if (err != nil) {
 		return err
 	} else {
-		readall, _ := ioutil.ReadAll(resp.Body)
-		json, _ := gabs.ParseJSON(readall)
+		readall, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			return err
+		}
+		json, err := gabs.ParseJSON(readall)
+		if err != nil {
+			return err
+		}
 		client.client = json.Path("projectTreeData.clientId").Data().(string)
 		client.owner = int(json.Path("projectTreeData.mainProjectTreeInfo.ownerId").Data().(float64))
 		client.most_recent_transaction = json.Path("projectTreeData.mainProjectTreeInfo.initialMostRecentOperationTransactionId").Data().(string)
@@ -161,7 +163,7 @@ func (client *WorkflowyClient) refreshData() error {
 	}
 }
 
-func lookupProjectNode(json *gabs.Container, path []string) (WorkflowyItem, error) {
+func lookupItemFromJson(json *gabs.Container, path []string) (WorkflowyItem, error) {
 	children, err := json.Children()
 	if err != nil {
 		return WorkflowyItem{}, errors.New("could not find children")
@@ -199,35 +201,34 @@ func lookupProjectNode(json *gabs.Container, path []string) (WorkflowyItem, erro
 				}, nil
 
 			} else {
-				return lookupProjectNode(child.Path("ch"), path[1:])
+				return lookupItemFromJson(child.Path("ch"), path[1:])
 			}
 		}
 	}
 	return WorkflowyItem{}, errors.New("Could not find node " + path[0])
 }
 
-func newOperationList(lasttxn string, operations [](*gabs.Container)) *gabs.Container {
-	jsons := gabs.New()
-	jsons.Set(lasttxn, "most_recent_operation_transaction_id")
-	jsons.Array("operations")
+func makeOperationList(most_recent_transaction string, operations [](*gabs.Container)) *gabs.Container {
+	operationList := gabs.New()
+	operationList.Set(most_recent_transaction, "most_recent_operation_transaction_id")
+	operationList.Array("operations")
 	for _, operation := range operations {
-		jsons.ArrayAppend(operation.Data(), "operations")
+		operationList.ArrayAppend(operation.Data(), "operations")
 	}
 	containingArray := gabs.New()
 	containingArray.Array()
-	containingArray.ArrayAppend(jsons.Data())
+	containingArray.ArrayAppend(operationList.Data())
 	return containingArray
 }
 
-func makeItemId() (uuid string) {
+func makeItemId() string {
 	b := make([]byte, 16)
 	_, err := rand.Read(b)
 	if err != nil {
 		fmt.Println("Error: ", err)
-		return
+		return ""
 	}
-	uuid = strings.ToLower(fmt.Sprintf("%X-%X-%X-%X-%X", b[0:4], b[4:6], b[6:8], b[8:10], b[10:]))
-	return
+	return strings.ToLower(fmt.Sprintf("%X-%X-%X-%X-%X", b[0:4], b[4:6], b[6:8], b[8:10], b[10:]))
 }
 
 func makeUpdateId() string {
