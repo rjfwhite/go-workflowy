@@ -14,7 +14,6 @@ https://github.com/Jeffail/gabs
 * Locally applying updates without re-fetching whole item tree
 * Correctly honouring modification dates
 * Correctly honouring undo actions
-* Solid error handling
 
 ## Example
 ```go

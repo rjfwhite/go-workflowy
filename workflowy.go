@@ -42,18 +42,17 @@ func GetSession(username string, password string) (string, error) {
 	form.Add("password", password)
 	resp, err := client.PostForm("https://workflowy.com/accounts/login/", form)
 	if (resp.StatusCode != 302) {
-		return "", err
+		return "", errors.New("Expected status 302 when getting session")
 	}
 	if err != nil {
 		return "", err
-	} else {
-		for _, cookie := range resp.Cookies() {
-			if cookie.Name == "sessionid" {
-				return cookie.Value, nil
-			}
+	}
+	for _, cookie := range resp.Cookies() {
+		if cookie.Name == "sessionid" {
+			return cookie.Value, nil
 		}
 	}
-	return "", errors.New("Unknown")
+	return "", errors.New("Unable to find session within returned cookies")
 }
 
 func NewClient(session string) (*WorkflowyClient, error) {
