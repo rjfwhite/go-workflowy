@@ -40,7 +40,7 @@ func NewClientFromCredentials(username string, password string) (*WorkflowyClien
 }
 
 func NewClientFromSession(session string) (*WorkflowyClient, error) {
-	req, err := http.NewRequest("GET", "https://workflowy-go.com/get_initialization_data?client_version=18", nil)
+	req, err := http.NewRequest("GET", "https://workflowy.com/get_initialization_data?client_version=18", nil)
 	req.Header.Add("Cookie", "sessionid="+session)
 	resp, err := http.DefaultClient.Do(req)
 
@@ -61,7 +61,7 @@ func (client *WorkflowyClient) LookupItem(path []string) (WorkflowyItem, error) 
 	if client.json.ExistsP("projectTreeData.mainProjectTreeInfo.rootProjectChildren") {
 		return lookupProjectNode(client.json.Path("projectTreeData.mainProjectTreeInfo.rootProjectChildren"), path)
 	} else {
-		return WorkflowyItem{}, errors.New("Malformed workflowy-go json")
+		return WorkflowyItem{}, errors.New("Malformed workflowy json")
 	}
 }
 
@@ -146,7 +146,7 @@ func (client *WorkflowyClient) ApplyUpdates() error {
 	form.Add("push_poll_data", arry.String())
 	log.Println(arry.StringIndent("", "\t"))
 
-	req, _ := http.NewRequest("POST", "https://workflowy-go.com/push_and_poll", strings.NewReader(form.Encode()))
+	req, _ := http.NewRequest("POST", "https://workflowy.com/push_and_poll", strings.NewReader(form.Encode()))
 	req.Header.Add("Cookie", "sessionid="+client.Session)
 
 	resp, err := http.DefaultClient.Do(req)
@@ -235,7 +235,7 @@ func login(username string, password string) (string, error) {
 	form.Add("username", username)
 	form.Add("password", password)
 
-	resp, err := client.PostForm("https://workflowy-go.com/accounts/login/", form)
+	resp, err := client.PostForm("https://workflowy.com/accounts/login/", form)
 
 	if (resp.StatusCode != 302) {
 		return "", err
