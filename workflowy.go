@@ -45,11 +45,92 @@ func NewClientFromSession(session string) (*WorkflowyClient, error) {
 	return workflowyClient, err
 }
 
+func (client *WorkflowyClient) LookupItem(path ... string) (WorkflowyItem, error) {
+	if client.json.ExistsP("projectTreeData.mainProjectTreeInfo.rootProjectChildren") {
+		return lookupProjectNode(client.json.Path("projectTreeData.mainProjectTreeInfo.rootProjectChildren"), path)
+	} else {
+		return WorkflowyItem{}, errors.New("Malformed workflowy json")
+	}
+}
+
+func (client *WorkflowyClient) AddCreate(name string, priority int, parent *string, description *string) {
+	item_id := makeItemId()
+	parentString := "None"
+	if parent != nil {
+		parentString = *parent
+	}
+	op := gabs.New()
+	op.Set("create", "type")
+	op.Set(item_id, "data", "projectid")
+	op.Set(parentString, "data", "parentid")
+	op.Set(priority, "data", "priority")
+	client.pending_operations = append(client.pending_operations, op)
+	client.AddUpdate(item_id, &name, &priority, parent, description)
+}
+
+func (client *WorkflowyClient) AddUpdate(item_id string, name *string, priority *int, parent *string, description *string) {
+	op := gabs.New()
+	op.Set("edit", "type")
+	op.Set(item_id, "data", "projectid")
+	if name != nil {
+		op.Set(html.EscapeString(*name), "data", "name")
+	}
+	if description != nil {
+		op.Set(html.EscapeString(*description), "data", "description")
+	}
+	if parent != nil {
+		op.Set(*parent, "data", "parentid")
+	}
+	if priority != nil {
+		op.Set(*priority, "data", "priority")
+	}
+	client.pending_operations = append(client.pending_operations, op)
+}
+
+func (client *WorkflowyClient) AddDelete(item_id string) {
+	op := gabs.New()
+	op.Set("delete", "type")
+	op.Set(item_id, "data", "projectid")
+	client.pending_operations = append(client.pending_operations, op)
+}
+
+func (client *WorkflowyClient) AddComplete(item_id string) {
+	op := gabs.New()
+	op.Set("complete", "type")
+	op.Set(item_id, "data", "projectid")
+	client.pending_operations = append(client.pending_operations, op)
+}
+
+func (client *WorkflowyClient) AddUncomplete(item_id string) {
+	op := gabs.New()
+	op.Set("uncomplete", "type")
+	op.Set(item_id, "data", "projectid")
+	client.pending_operations = append(client.pending_operations, op)
+}
+
+func (client *WorkflowyClient) ApplyAndRefresh() error {
+	form := url.Values{}
+	arry := newOperationList(client.most_recent_transaction, client.pending_operations)
+	form.Add("client_id", client.client)
+	form.Add("crosscheck_user_id", string(client.owner))
+	form.Add("push_poll_id", makeUpdateId())
+	form.Add("client_version", "18")
+	form.Add("push_poll_data", arry.String())
+	req, _ := http.NewRequest("POST", "https://workflowy.com/push_and_poll", strings.NewReader(form.Encode()))
+	req.Header.Add("Cookie", "sessionid="+client.Session)
+	_, err := http.DefaultClient.Do(req)
+	if (err != nil) {
+		return err
+	}
+	client.pending_operations = [](*gabs.Container){}
+	client.refreshData()
+	return nil
+}
+
 func (client *WorkflowyClient) refreshData() error {
 	req, err := http.NewRequest("GET", "https://workflowy.com/get_initialization_data?client_version=18", nil)
 	req.Header.Add("Cookie", "sessionid="+client.Session)
 	resp, err := http.DefaultClient.Do(req)
-
 	if (err != nil) {
 		return err
 	} else {
@@ -60,14 +141,6 @@ func (client *WorkflowyClient) refreshData() error {
 		client.most_recent_transaction = json.Path("projectTreeData.mainProjectTreeInfo.initialMostRecentOperationTransactionId").Data().(string)
 		client.json = json
 		return nil
-	}
-}
-
-func (client *WorkflowyClient) LookupItem(path ... string) (WorkflowyItem, error) {
-	if client.json.ExistsP("projectTreeData.mainProjectTreeInfo.rootProjectChildren") {
-		return lookupProjectNode(client.json.Path("projectTreeData.mainProjectTreeInfo.rootProjectChildren"), path)
-	} else {
-		return WorkflowyItem{}, errors.New("Malformed workflowy json")
 	}
 }
 
@@ -84,8 +157,9 @@ func lookupProjectNode(json *gabs.Container, path []string) (WorkflowyItem, erro
 				item_id := child.Path("id").Data().(string)
 				name := child.Path("nm").Data().(string)
 				completed := child.Exists("cp")
-
 				children_names := []string{}
+
+				// if this item has children, gather their names
 				if child.Exists("ch") {
 					metaChildren, _ := child.Path("ch").Children()
 					for _, metaChild := range metaChildren {
@@ -98,64 +172,21 @@ func lookupProjectNode(json *gabs.Container, path []string) (WorkflowyItem, erro
 					descriptionString := child.Path("no").Data().(string)
 					description = &descriptionString
 				}
+				return WorkflowyItem{
+					Id:             item_id,
+					Name:           name,
+					Priority:       priority,
+					Children_names: children_names,
+					Completed:      completed,
+					Description:    description,
+				}, nil
 
-				return WorkflowyItem{Id: item_id, Name: name, Priority: priority, Children_names: children_names, Completed: completed, Description: description}, nil
 			} else {
 				return lookupProjectNode(child.Path("ch"), path[1:])
 			}
 		}
 	}
 	return WorkflowyItem{}, errors.New("Could not find node " + path[0])
-}
-
-func (client *WorkflowyClient) AddCreate(name string, priority int, parent *string, description *string) {
-	item_id := makeItemId()
-	create := newCreateOperation(item_id, 10, parent)
-	edit := newEditOperation(item_id, &name, description, nil, nil)
-	client.pending_operations = append(client.pending_operations, create)
-	client.pending_operations = append(client.pending_operations, edit)
-}
-
-func (client *WorkflowyClient) AddUpdate(item_id string, name *string, priority *int, parent *string, description *string) {
-	client.pending_operations = append(client.pending_operations, newEditOperation(item_id, name, description, parent, priority))
-}
-
-func (client *WorkflowyClient) AddDelete(item_id string) {
-	client.pending_operations = append(client.pending_operations, newDeleteOperation(item_id))
-}
-
-func (client *WorkflowyClient) AddComplete(item_id string) {
-	client.pending_operations = append(client.pending_operations, newCompleteOperation(item_id))
-}
-
-func (client *WorkflowyClient) AddUncomplete(item_id string) {
-	client.pending_operations = append(client.pending_operations, newUncompleteOperation(item_id))
-}
-
-func (client *WorkflowyClient) ApplyAndRefresh() error {
-	form := url.Values{}
-
-	arry := newOperationList(client.most_recent_transaction, client.pending_operations)
-
-	form.Add("client_id", client.client)
-	form.Add("crosscheck_user_id", string(client.owner))
-	form.Add("push_poll_id", makeUpdateId())
-	form.Add("client_version", "18")
-	form.Add("push_poll_data", arry.String())
-
-	req, _ := http.NewRequest("POST", "https://workflowy.com/push_and_poll", strings.NewReader(form.Encode()))
-	req.Header.Add("Cookie", "sessionid="+client.Session)
-
-	_, err := http.DefaultClient.Do(req)
-
-	if (err != nil) {
-		return err
-	}
-
-	client.pending_operations = [](*gabs.Container){}
-	client.refreshData()
-
-	return nil
 }
 
 func newOperationList(lasttxn string, operations [](*gabs.Container)) *gabs.Container {
@@ -165,58 +196,10 @@ func newOperationList(lasttxn string, operations [](*gabs.Container)) *gabs.Cont
 	for _, operation := range operations {
 		jsons.ArrayAppend(operation.Data(), "operations")
 	}
-	arry := gabs.New()
-	arry.Array()
-	arry.ArrayAppend(jsons.Data())
-	return arry
-}
-
-func newOperation(item string, operation string) *gabs.Container {
-	op := gabs.New()
-	op.Set(operation, "type")
-	//op.Set(10000, "client_timestamp")
-	op.Set(item, "data", "projectid")
-	return op
-}
-
-func newCreateOperation(item string, priority int, parent *string) *gabs.Container {
-	parentString := "None"
-	if parent != nil {
-		parentString = *parent
-	}
-	op := newOperation(item, "create")
-	op.Set(parentString, "data", "parentid")
-	op.Set(priority, "data", "priority")
-	return op
-}
-
-func newEditOperation(item string, name *string, description *string, parent *string, priority *int) *gabs.Container {
-	op := newOperation(item, "edit")
-	if name != nil {
-		op.Set(html.EscapeString(*name), "data", "name")
-	}
-	if description != nil {
-		op.Set(html.EscapeString(*description), "data", "description")
-	}
-	if parent != nil {
-		op.Set(*parent, "data", "parentid")
-	}
-	if priority != nil {
-		op.Set(*priority, "data", "priority")
-	}
-	return op
-}
-
-func newCompleteOperation(item string) *gabs.Container {
-	return newOperation(item, "complete")
-}
-
-func newUncompleteOperation(item string) *gabs.Container {
-	return newOperation(item, "uncomplete")
-}
-
-func newDeleteOperation(item string) *gabs.Container {
-	return newOperation(item, "delete")
+	containingArray := gabs.New()
+	containingArray.Array()
+	containingArray.ArrayAppend(jsons.Data())
+	return containingArray
 }
 
 func login(username string, password string) (string, error) {
@@ -228,13 +211,10 @@ func login(username string, password string) (string, error) {
 	form := url.Values{}
 	form.Add("username", username)
 	form.Add("password", password)
-
 	resp, err := client.PostForm("https://workflowy.com/accounts/login/", form)
-
 	if (resp.StatusCode != 302) {
 		return "", err
 	}
-
 	if err != nil {
 		return "", err
 	} else {
@@ -244,7 +224,6 @@ func login(username string, password string) (string, error) {
 			}
 		}
 	}
-
 	return "", errors.New("Unknown")
 }
 
