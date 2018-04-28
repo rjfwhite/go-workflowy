@@ -31,15 +31,32 @@ type WorkflowyItem struct {
 	Children_names []string
 }
 
-func NewClientFromCredentials(username string, password string) (*WorkflowyClient, error) {
-	session, err := login(username, password)
-	if err != nil {
-		return nil, err
+func GetSession(username string, password string) (string, error) {
+	client := &http.Client{
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
 	}
-	return NewClientFromSession(session)
+	form := url.Values{}
+	form.Add("username", username)
+	form.Add("password", password)
+	resp, err := client.PostForm("https://workflowy.com/accounts/login/", form)
+	if (resp.StatusCode != 302) {
+		return "", err
+	}
+	if err != nil {
+		return "", err
+	} else {
+		for _, cookie := range resp.Cookies() {
+			if cookie.Name == "sessionid" {
+				return cookie.Value, nil
+			}
+		}
+	}
+	return "", errors.New("Unknown")
 }
 
-func NewClientFromSession(session string) (*WorkflowyClient, error) {
+func NewClient(session string) (*WorkflowyClient, error) {
 	workflowyClient := &WorkflowyClient{Session: session, pending_operations: [](*gabs.Container){}}
 	err := workflowyClient.refreshData()
 	return workflowyClient, err
@@ -110,12 +127,12 @@ func (client *WorkflowyClient) AddUncomplete(item_id string) {
 
 func (client *WorkflowyClient) ApplyAndRefresh() error {
 	form := url.Values{}
-	arry := newOperationList(client.most_recent_transaction, client.pending_operations)
+	operationList := newOperationList(client.most_recent_transaction, client.pending_operations)
 	form.Add("client_id", client.client)
 	form.Add("crosscheck_user_id", string(client.owner))
 	form.Add("push_poll_id", makeUpdateId())
 	form.Add("client_version", "18")
-	form.Add("push_poll_data", arry.String())
+	form.Add("push_poll_data", operationList.String())
 	req, _ := http.NewRequest("POST", "https://workflowy.com/push_and_poll", strings.NewReader(form.Encode()))
 	req.Header.Add("Cookie", "sessionid="+client.Session)
 	_, err := http.DefaultClient.Do(req)
@@ -200,31 +217,6 @@ func newOperationList(lasttxn string, operations [](*gabs.Container)) *gabs.Cont
 	containingArray.Array()
 	containingArray.ArrayAppend(jsons.Data())
 	return containingArray
-}
-
-func login(username string, password string) (string, error) {
-	client := &http.Client{
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			return http.ErrUseLastResponse
-		},
-	}
-	form := url.Values{}
-	form.Add("username", username)
-	form.Add("password", password)
-	resp, err := client.PostForm("https://workflowy.com/accounts/login/", form)
-	if (resp.StatusCode != 302) {
-		return "", err
-	}
-	if err != nil {
-		return "", err
-	} else {
-		for _, cookie := range resp.Cookies() {
-			if cookie.Name == "sessionid" {
-				return cookie.Value, nil
-			}
-		}
-	}
-	return "", errors.New("Unknown")
 }
 
 func makeItemId() (uuid string) {

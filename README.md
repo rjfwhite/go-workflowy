@@ -18,12 +18,12 @@ https://github.com/Jeffail/gabs
 
 ## Example
 ```go
-// Login
-client, _ := workflowy.NewClientFromCredentials("username", "password")
+// Logs in and returns a session id.
+// Ideally use the session id directly rather than always using this
+session_id, _ := workflowy.GetSession("username", "password")
 
-// Suggested use of sessions rather than username/password
-// (can be grabbed after first username/password use)
-log.Println("Logged in with sessionId %s", client.Session)
+// Set Up Client
+client, _ := workflowy.NewClient(session_id)
 
 // Looking up a particular part of the workflowy item tree
 item, _ := client.LookupItem("My", "Workflowy", "Path")
