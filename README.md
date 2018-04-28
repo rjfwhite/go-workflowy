@@ -7,6 +7,7 @@ An Unofficial Go Workflowy Client Library
 * Updates (Create / Update / Complete / Uncomplete / Delete)
 
 ## Not Implemented
+* Handling items that are shared
 * Locally applying updates without re-fetching whole item tree
 * Correctly honouring modification dates
 * Correctly honouring undo actions
