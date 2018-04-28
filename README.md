@@ -1,5 +1,5 @@
 # go-workflowy
-An Unofficial Go Workflowy Client Library
+An Unofficial Golang Workflowy Client Library
 
 ## Dependencies
 https://github.com/Jeffail/gabs
