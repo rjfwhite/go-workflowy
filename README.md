@@ -2,7 +2,7 @@
 An Unofficial Golang Client for [Workflowy](https://workflowy.com)
 
 ## Dependencies
-[github.com/Jeffail/gabs](https://github.com/Jeffail/gabs)
+https://github.com/Jeffail/gabs
 
 ## Implemented
 * Login (with Session or Username / Password)
