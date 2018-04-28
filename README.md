@@ -2,7 +2,7 @@
 An Unofficial Go Workflowy Client Library
 
 ## Dependencies
-[https://github.com/Jeffail/gabs](Jeffail/gabs JSON)
+https://github.com/Jeffail/gabs
 
 ## Implemented
 * Login (with Session or Username / Password)
