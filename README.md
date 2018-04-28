@@ -1,6 +1,9 @@
 # go-workflowy
 An Unofficial Go Workflowy Client Library
 
+## Dependencies
+[https://github.com/Jeffail/gabs](Jeffail/gabs JSON)
+
 ## Implemented
 * Login (with Session or Username / Password)
 * Querying for data within the Workflowy item tree
